@@ -4,21 +4,22 @@ import { pokemonApi } from '../api/pokemonApi';
 import confetti from 'canvas-confetti';
 
 export const usePokemonGame = () => {
-    
+
     const gameStatus = ref<GameStatus>(GameStatus.Playing);
     const pokemons = ref<Pokemon[]>([])
     const pokemonOptions = ref<Pokemon[]>([]);
     const isLoading = computed(() => pokemons.value.length === 0);
+    const hasError = ref(false);
 
-    // Creamos un pokemon de listado de options
-    // Obtengo un valor partiendo de alguno de los elementos que conforman parte del arreglo
-    // const randomPokemon = computed(() => pokemonOptions.value[ Math.floor(Math.random() * pokemonOptions.value.length)],);
-    const randomPokemon = computed(
-        () => {
-            const randomIndex = Math.floor(Math.random() * pokemonOptions.value.length);
-            return pokemonOptions.value[randomIndex];
-        },
-    );
+    // Estadísticas del juego
+    const gamesWon = ref(0);
+    const gamesLost = ref(0);
+
+
+    const randomPokemon = computed(() => {
+        const randomIndex = Math.floor(Math.random() * pokemonOptions.value.length);
+        return pokemonOptions.value[randomIndex];
+    });
 
     const getPokemons = async () => {
         const response = await pokemonApi.get<PokemonListResponse>('/?limit=151');
@@ -33,16 +34,30 @@ export const usePokemonGame = () => {
         return pokemonsArray.sort(() => Math.random() - 0.5);
     };
 
-    const getNextRound = (howMany: number = 4 ) => {
-        gameStatus.value = GameStatus.Playing;
-        pokemonOptions.value = pokemons.value.slice(0, howMany);
-        pokemons.value = pokemons.value.slice(howMany);
+    const getNextRound = async (howMany: number = 5) => {
+        hasError.value = false;
+
+        try {
+            if (pokemons.value.length < howMany) {
+                pokemons.value = await getPokemons();
+            }
+
+            gameStatus.value = GameStatus.Playing;
+            pokemonOptions.value = pokemons.value.slice(0, howMany);
+            pokemons.value = pokemons.value.slice(howMany);
+        } catch (error) {
+            hasError.value = true;
+        }
     };
 
-    const checkAnswer=(id: number)=>{
-        const hasWon = randomPokemon.value.id === id;
-        if(hasWon){
-            gameStatus.value=GameStatus.Won;
+    const checkAnswer = (id: number) => {
+        if (gameStatus.value !== GameStatus.Playing) return;
+
+        const hasWon = randomPokemon.value?.id === id;
+
+        if (hasWon) {
+            gameStatus.value = GameStatus.Won;
+            gamesWon.value++;
             confetti({
                 particleCount: 300,
                 spread: 150,
@@ -54,24 +69,21 @@ export const usePokemonGame = () => {
         }
 
         gameStatus.value = GameStatus.Lost;
+        gamesLost.value++;
     }
 
-
-    // Lo montamos directamente para ver el resultado al momento en que cargue la aplicación
-    onMounted(async ()=>{
-        await new Promise((r) => setTimeout(r, 1000));
-        pokemons.value=await getPokemons();
+    onMounted(() => {
         getNextRound();
-        console.log({ pokemons });
-        console.log(pokemonOptions.value);
     });
-    
+
     return {
         gameStatus,
         isLoading,
+        hasError,
         pokemonOptions,
         randomPokemon,
-        // Methods
+        gamesWon,
+        gamesLost,
         getNextRound,
         checkAnswer,
     };
